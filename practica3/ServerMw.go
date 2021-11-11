@@ -15,7 +15,7 @@ import (
 	"bufio"
 	"net"
 	"os"
-	//"os/exec" --> Esta se utiliza para ejecutar el lanzar.go
+	"os/exec" //--> Esta se utiliza para ejecutar el lanzar.go
 	"log"
 	"net/rpc"
 	"net/http"
@@ -23,6 +23,7 @@ import (
 	//"strings"
 	"prac3/com"
 	"sync"
+	"time"
 )
 
 type PrimesImpl struct {
@@ -73,6 +74,25 @@ func FindPrimes(interval com.TPInterval) (primes []int) {
 	return primes
 }
 
+func sendRequest(endpoint string, interval com.TPInterval, chanResp chan<- *[]int){
+	client, err := rpc.DialHTTP("tcp", endpoint)
+	if err != nil { 
+		log.Fatal("dialing:", err)
+		os.Exit(1)
+	}
+	fmt.Println("Se hace dial")
+	var reply []int
+	err = client.Call("PrimesImpl.FindPrimes", interval, &reply)
+	//checkError(err)
+	if err != nil { // Se ha producido un crash, enviar por el toWorkers a otro worker a ver si hay más suerte
+		log.Fatal("primes error:", err)
+		//toWorkers <- recibe
+		// Intentar volver a poner en marcha el worker?????????
+	}
+
+	chanResp <- &reply
+}
+
 
 func enMarcha (IpPort string, toWorkers <-chan Paquete){
 
@@ -80,9 +100,9 @@ func enMarcha (IpPort string, toWorkers <-chan Paquete){
 	//var info = strings.Split(IpPort," ")
 	
 	//lanzar.go con argumentos puerto e IP. Info[0] es la ip del server para lanzar.go, info[1] el puerto que se pasa al server como parámetro
-	//cmd := exec.Command("go","run","lanzar.go", IpPort) 
-	//err := cmd.Start()
-	//checkError(err)
+	cmd := exec.Command("go","run","lanzar.go", IpPort) 
+	err := cmd.Start()
+	checkError(err)
 
 	//var endpoint = info[0]+":"+info[1]
 
@@ -90,31 +110,34 @@ func enMarcha (IpPort string, toWorkers <-chan Paquete){
 		fmt.Println("Esperando intervalo")
 		var recibe = <- toWorkers
 		fmt.Println("Llega intervalo")
+		//var reply []int
 
-
-		/*var chanResp = make(chan *[]int)
+		var chanResp = make(chan *[]int)
 		var chanTmout = make(chan int)
 		var numTouts = 0 // Sumar 1 cada vez que se llegue a un timeout
-		go sendRequest(IpPort,recibe,chanResp)
+		go sendRequest(IpPort,recibe.Request,chanResp)
 		
 		for numTouts != 4{ // Se espera 2 segundos a que se reciba el mensaje
 			go func(){ // Funcion que espera 500ms y manda un mensaje por el canal para que se vuelva a esperar
 				time.Sleep(time.Duration(500) * time.Millisecond)
 				chanTmout <- 1
-			}
+			}()
 
 			select{
 				case reply := <- chanResp:
-
-				case tmout := <- chanTmout:
+					fmt.Println("Llega respuesta")
+					recibe.Resp <- reply
+					numTouts=4
+				case _ = <- chanTmout:
 					numTouts++;
+					fmt.Println("Ha habido timeout")
 					if(numTouts == 4){ // Enviar a otra worker o devolver error??
 
 					}
 			}
-		}*/
+		}
 
-		client, err := rpc.DialHTTP("tcp", IpPort)
+		/*client, err := rpc.DialHTTP("tcp", IpPort)
 		if err != nil { 
 			log.Fatal("dialing:", err)
 			os.Exit(1)
@@ -125,11 +148,11 @@ func enMarcha (IpPort string, toWorkers <-chan Paquete){
 		//checkError(err)
 		if err != nil { // Se ha producido un crash, enviar por el toWorkers a otro worker a ver si hay más suerte
 			log.Fatal("primes error:", err)
-			toWorkers <- recibe
+			//toWorkers <- recibe
 			// Intentar volver a poner en marcha el worker?????????
 		}
 
-		recibe.Resp <- &reply
+		recibe.Resp <- &reply*/
 	}
 }
 
